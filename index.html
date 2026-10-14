@@ -196,7 +196,7 @@ pre.diag{white-space:pre-wrap;word-break:break-all;background:#0b0c10;border-rad
 <div id="prog" class="prog hidden"><div id="progL"></div><div class="pbar"><i id="progB"></i></div></div>
 
 <div class="layer sheet" id="L-detail"><div class="bd" data-act="back"></div><div class="panel"><div class="grab"></div><div id="detailBody"></div></div></div>
-<div class="layer sheet" id="L-form"><div class="bd" data-act="back"></div><div class="panel" id="formPanel"><div class="grab"></div><div id="formBody"></div></div></div>
+<div class="layer sheet" id="L-form"><div class="bd" data-act="formBd"></div><div class="panel" id="formPanel"><div class="grab"></div><div id="formBody"></div></div></div>
 <div class="layer sheet" id="L-pick"><div class="bd" data-act="back"></div><div class="panel"><div class="grab"></div><div id="pickBody"></div></div></div>
 <div class="layer sheet" id="L-settings"><div class="bd" data-act="back"></div><div class="panel"><div class="grab"></div><div id="setBody"></div></div></div>
 <div class="layer viewer" id="L-viewer">
@@ -302,7 +302,7 @@ function hideLayer(tag){
   }
   const e = layerEl(tag); e.classList.remove('open');
   if(tag === 'viewer') $('#vImg').removeAttribute('src');
-  if(tag === 'form') form = null;
+  if(tag === 'form'){ if(form && !form.saved && formDirty()){ saveDraft(); toast('작성 중인 내용은 임시 저장됐어요. 다시 ＋를 누르면 이어서 쓸 수 있어요', 3500); } form = null; }
   if(!uiStack.length) document.body.classList.remove('locked');
 }
 const isOpen = tag => uiStack.some(x => x.tag === tag);
@@ -726,8 +726,14 @@ function renderForm(){
   h += `<div class="fld"><label>태그 (쉼표·띄어쓰기로 구분)</label><input id="fTags" value="${esc(it?(it.tags||[]).join(', '):'')}" placeholder="lofi, 공부, 비"></div>
     <div class="fld"><label>${fd==='idea'?'콘셉트 · 브레인스토밍 메모':'메모'}</label><textarea id="fMemo" placeholder="${fd==='idea'?'타깃 시청자, 분위기, 썸네일 아이디어, 제목 후보, 참고 채널 링크...':'메모, 프롬프트, 참고 링크...'}">${esc(it?it.memo||'':'')}</textarea></div>`;
   if(fd === 'idea') h += `<div class="fld"><label>참고 이미지 (붙여넣기 가능)</label><label class="drop" id="fDrop"><input type="file" id="fFile" accept="image/*" multiple><span>🖼️ 이미지 추가</span></label><div id="fPend" class="pgrid"></div></div>`;
-  h += `<div class="btns"><button class="btn" data-act="back">취소</button><button class="btn pri" id="fSave" data-act="saveForm">저장</button></div>`;
+  h += `<div class="btns"><button class="btn" data-act="formCancel">취소</button><button class="btn pri" id="fSave" data-act="saveForm">저장</button></div>`;
   $('#formBody').innerHTML = h;
+  // 작성 중 내용 보호: 처음 값 스냅샷 → 임시저장 복원 → 입력할 때마다 임시저장
+  f.init = formVals();
+  const dr = loadDraft();
+  if(dr){ for(const [k, v] of Object.entries(dr)){ const e = document.getElementById(k); if(e) e.value = v; } toast('작성 중이던 내용을 불러왔어요'); }
+  $('#formBody').addEventListener('input', saveDraft);
+  $('#formBody').addEventListener('change', saveDraft);
   const inp = $('#fFile');
   inp.addEventListener('change', () => { const fs = [...inp.files]; inp.value = ''; addPend(fs); });
   const dz = $('#formPanel');
@@ -736,6 +742,20 @@ function renderForm(){
   dz.ondrop = e => { e.preventDefault(); $('#fDrop').classList.remove('over'); addPend([...e.dataTransfer.files]); };
   renderPend();
 }
+/* ---- 작성 중 내용 보호 (바깥 클릭·뒤로가기로 사라지지 않게) ---- */
+const FORM_FIELDS = ['fTitle','fSt','fMood','fTgt','fYt','fPl','fTags','fMemo'];
+const draftKey = () => 'mk_draft_' + (form.id || 'new_' + form.folder);
+function formVals(){ const o = {}; for(const k of FORM_FIELDS){ const e = document.getElementById(k); if(e) o[k] = e.value; } return o; }
+function formDirty(){
+  if(!form || !form.init) return false;
+  const v = formVals(); if(FORM_FIELDS.some(k => (v[k] ?? '') !== (form.init[k] ?? ''))) return true;
+  if(form.pend.length) return true;
+  const it = form.id ? byId(form.id) : null;
+  return !!it && (it.files||[]).length !== form.keep.length;
+}
+function saveDraft(){ if(!form) return; try { const v = formVals(); if(FORM_FIELDS.some(k => (v[k] ?? '') !== (form.init[k] ?? ''))) localStorage.setItem(draftKey(), JSON.stringify(v)); else localStorage.removeItem(draftKey()); } catch {} }
+function loadDraft(){ try { return JSON.parse(localStorage.getItem(draftKey())); } catch { return null; } }
+function clearDraft(){ try { localStorage.removeItem(draftKey()); } catch {} }
 function addPend(fs){
   if(!form) return;
   const fd = form.folder, it = form.id ? byId(form.id) : null;
@@ -792,6 +812,7 @@ async function saveForm(){
       metas.forEach((m, i) => items.push({ id: uid(), folder: fd, created: now + i, updated: now + i, title: (metas.length === 1 && title) || stripExt(m.name), tags, memo, pl, files: [m], ord: ord++, ...(fd==='video'?{ytUrl:yt}:{}) }));
       save(); scheduleSync();
     }
+    clearDraft(); f.saved = true;
     uiBack(); render(); toast(it ? '수정했어요' : metas.length > 1 ? `${metas.length}개 추가했어요` : '추가했어요');
     processUploads();
   } catch(e) {
@@ -1006,6 +1027,8 @@ const ACT = {
   stamps: async d => { const s = timestamps(d.id); await copyText(s); toast('유튜브 설명란용 타임스탬프를 복사했어요'); },
   pickOpen: d => openPick(d.id, d.f), savePick,
   addTo: d => openForm(d.f, null, { pl: d.id }),
+  formBd: () => { if(formDirty()){ const p = $('#formPanel'); p.animate([{transform:'translateY(0)'},{transform:'translateY(-8px)'},{transform:'translateY(0)'}], {duration:220}); toast('작성 중이에요 — 저장 또는 취소 버튼을 눌러주세요'); } else uiBack(); },
+  formCancel: () => { if(formDirty() && !confirm('작성 중인 내용을 버릴까요?')) return; clearDraft(); if(form) form.saved = true; uiBack(); },
   saveForm, unpend: d => { const x = form.pend.splice(+d.v, 1)[0]; if(x && x._u) URL.revokeObjectURL(x._u); renderPend(); },
   unkeep: d => { form.keep = form.keep.filter(x => x !== d.v); renderPend(); },
   mToggle: () => player.paused ? player.play() : player.pause(), mPrev: () => step(-1), mNext: () => step(1), mClose: closeMini,
