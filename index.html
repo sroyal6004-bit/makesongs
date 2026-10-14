@@ -155,6 +155,7 @@ body.has-mini .fab{bottom:calc(var(--navh) + var(--sb) + 82px)}
 .prow input{width:22px;height:22px;flex:none;padding:0;margin:0;border:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--acc)}
 .fld label.prow{display:flex;margin:0;font-size:inherit;color:inherit}
 .prow .rb{flex:1;min-width:0}
+.pthumb{width:96px;flex:none;border-radius:8px;overflow:hidden}
 .plbox{max-height:220px;overflow:auto;background:var(--card2);border-radius:12px;padding:0 10px}
 .plbox .prow:last-child{border-bottom:0}
 .prow b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -858,8 +859,10 @@ function renderPick(){
   const p = pick, idea = byId(p.idea);
   $('#pickBody').innerHTML = `<h2>${FOLD[p.folder].icon} ${FOLD[p.folder].name} 연결</h2><p class="note">💡 ${esc(idea?idea.title:'')} 에 넣을 항목을 고르세요</p>
     <div>${p.cand.map(x => { const os = livePls(x).filter(o => o.id !== p.idea); const f = (x.files||[])[0]||{};
-      return `<label class="prow"><input type="checkbox" data-pid="${x.id}" ${p.sel.has(x.id)?'checked':''}><div class="rb"><b>${esc(x.title)}</b><small>${[f.dur?fmtDur(f.dur):'', f.size?fmtSize(f.size):'', os.length ? '다른 리스트: ' + os.map(o => o.title).join(', ') : ''].filter(Boolean).map(esc).join(' · ')}</small></div></label>`; }).join('')}</div>
+      const pv = p.folder !== 'music' ? `<div class="pthumb">${(x.files||[])[0] ? phHTML(x.files[0], FOLD[p.folder].icon) : (ytPh(x.ytUrl) || `<div class="ph">🔗</div>`)}</div>` : '';
+      return `<label class="prow"><input type="checkbox" data-pid="${x.id}" ${p.sel.has(x.id)?'checked':''}>${pv}<div class="rb"><b>${esc(x.title)}</b><small>${[f.dur?fmtDur(f.dur):'', f.size?fmtSize(f.size):'', os.length ? '다른 리스트: ' + os.map(o => o.title).join(', ') : ''].filter(Boolean).map(esc).join(' · ')}</small></div></label>`; }).join('')}</div>
     <div class="btns"><button class="btn" data-act="back">취소</button><button class="btn pri" data-act="savePick">적용</button></div>`;
+  observeThumbs($('#pickBody'));
   $('#pickBody').querySelectorAll('input[data-pid]').forEach(c => c.onchange = () => c.checked ? p.sel.add(c.dataset.pid) : p.sel.delete(c.dataset.pid));
 }
 function savePick(){
