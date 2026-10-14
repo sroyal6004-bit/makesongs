@@ -613,7 +613,7 @@ function tagsHTML(t){ return (t||[]).length ? `<div class="tags">${t.map(x=>`<sp
 function itemDetailHTML(it){
   const f = (it.files||[])[0]; const p = liveIdea(it.pl);
   let hero = '';
-  if(it.folder === 'thumb' && f) hero = `<div class="hero" data-act="view" data-id="${it.id}" data-i="0" style="cursor:zoom-in">${phHTML(f,'🖼️')}</div>`;
+  if(it.folder === 'thumb' && f) hero = `<div class="hero" data-act="view" data-id="${it.id}" data-i="0" style="cursor:zoom-in"><img id="dImg" alt="" style="min-height:120px"></div>`;
   else if(it.folder === 'music' && f) hero = `<div class="bigplay"><button class="play" style="width:56px;height:56px;font-size:20px" data-act="playOne" data-id="${it.id}">▶</button><div><b>${esc(it.title)}</b><br><small style="color:var(--sub)">${f.dur?fmtDur(f.dur)+' · ':''}${fmtSize(f.size)} · ${esc((f.type||'').replace('audio/',''))}</small></div></div>`;
   else if(it.folder === 'video' && f) hero = `<div class="hero"><video id="dVideo" controls playsinline preload="metadata"></video></div>`;
   else if(it.folder === 'video' && ytId(it.ytUrl)) hero = `<a class="hero" style="display:block" href="${esc(it.ytUrl)}" target="_blank" rel="noopener">${ytPh(it.ytUrl)}</a>`;
@@ -648,6 +648,12 @@ function ideaDetailHTML(it){
     <div class="btns" style="margin-top:24px"><button class="btn" data-act="edit" data-id="${it.id}">✏️ 수정</button><button class="btn danger" data-act="del" data-id="${it.id}">🗑️ 삭제</button></div>`;
 }
 async function hydrateDetail(it){
+  const im = $('#dImg');
+  if(im){ // 원본 비율 그대로 전체 표시 (썸네일 먼저 → 원본으로 교체)
+    const f = it.files[0]; const t = await thumbSrc(f); if(t && $('#dImg') === im && !im.src) im.src = t;
+    const u = await fullSrc(f, true); if(u && $('#dImg') === im) im.src = u;
+    return;
+  }
   const v = $('#dVideo'); if(!v) return;
   const f = it.files[0]; const src = await fullSrc(f);
   if(src && $('#dVideo') === v){ v.src = src; v.addEventListener('play', () => { if(!player.paused) player.pause(); }); }
