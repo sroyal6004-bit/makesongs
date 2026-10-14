@@ -666,7 +666,8 @@ function ideaDetailHTML(it){
     ${tagsHTML(it.tags)}
     ${it.memo?`<h4>콘셉트 · 메모</h4><div class="memo">${linkify(it.memo)}</div>`:''}
     ${(it.files||[]).length?`<h4>참고 이미지</h4><div class="mgrid">${it.files.map((f,i)=>`<button data-act="view" data-id="${it.id}" data-i="${i}">${phHTML(f,'🖼️')}</button>`).join('')}</div>`:''}
-    ${it.ytUrl?`<h4>업로드된 영상</h4><p class="note"><a href="${esc(it.ytUrl)}" target="_blank" rel="noopener">${esc(it.ytUrl)}</a></p>`:''}
+    <h4>▶ 업로드된 영상<span class="sp"></span><button class="btn sm" data-act="addLink" data-id="${it.id}">＋ 링크 추가</button></h4>
+    ${ideaLinks(it).length ? ideaLinks(it).map((u,i) => `<div class="pitem"><span>🔗 <a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a></span><button class="x" data-act="delLink" data-id="${it.id}" data-i="${i}">✕</button></div>`).join('') : '<p class="note">유튜브 등에 올린 영상 주소를 추가하세요</p>'}
     <h4>🎵 트랙 순서<span class="sp"></span>${s.mus.length?`<button class="btn sm" data-act="playIdea" data-id="${it.id}" data-i="0">▶ 전체</button><button class="btn sm" data-act="stamps" data-id="${it.id}">📋 타임스탬프</button>`:''}</h4>
     ${trk || '<p class="note">곡을 연결하면 순서·총 길이·유튜브 타임스탬프가 자동으로 만들어져요</p>'}
     <div class="btns" style="margin-top:6px"><button class="btn sm" data-act="pickOpen" data-id="${it.id}" data-f="music">＋ 기존 곡 연결</button><button class="btn sm" data-act="addTo" data-id="${it.id}" data-f="music">⬆ 새 WAV 올리기</button></div>
@@ -688,6 +689,7 @@ async function hydrateDetail(it){
   if(src && $('#dVideo') === v){ v.src = src; v.addEventListener('play', () => { if(!player.paused) player.pause(); }); }
   else if(!src && $('#dVideo') === v) v.parentElement.innerHTML = `<div class="empty"><b>🎬</b>이 기기에 파일이 없어요 (다른 기기에만 있거나 업로드 전)</div>`;
 }
+const ideaLinks = it => [it.ytUrl, ...(it.ups||[])].filter(Boolean);
 function timestamps(id){
   const s = ideaStats(id); const long = s.dur >= 3600; let t = 0;
   return s.mus.map(m => { const line = `${fmtStamp(t, long)} ${m.title}`; t += (m.files[0]&&m.files[0].dur)||0; return line; }).join('\n');
@@ -1051,6 +1053,10 @@ const ACT = {
   mv: d => moveTrack(d.pl, d.id, +d.d),
   stamps: async d => { const s = timestamps(d.id); await copyText(s); toast('유튜브 설명란용 타임스탬프를 복사했어요'); },
   pickOpen: d => openPick(d.id, d.f), savePick,
+  addLink: d => { const it = byId(d.id); const u = (prompt('업로드된 영상 주소(URL)를 붙여넣으세요') || '').trim(); if(!u) return;
+    if(!/^https?:\/\//i.test(u)) return toast('http:// 또는 https:// 로 시작하는 주소를 넣어주세요');
+    upsert({ ...it, ytUrl: '', ups: [...ideaLinks(it), u] }); render(); toast('링크를 추가했어요'); },
+  delLink: d => { const it = byId(d.id); const L = ideaLinks(it); if(!confirm('이 링크를 지울까요?\n' + L[+d.i])) return; L.splice(+d.i, 1); upsert({ ...it, ytUrl: '', ups: L }); render(); },
   addTo: d => openForm(d.f, null, { pl: d.id }),
   formBd: () => { if(formDirty()){ const p = $('#formPanel'); p.animate([{transform:'translateY(0)'},{transform:'translateY(-8px)'},{transform:'translateY(0)'}], {duration:220}); toast('작성 중이에요 — 저장 또는 취소 버튼을 눌러주세요'); } else uiBack(); },
   formCancel: () => { if(formDirty() && !confirm('작성 중인 내용을 버릴까요?')) return; clearDraft(); if(form) form.saved = true; uiBack(); },
