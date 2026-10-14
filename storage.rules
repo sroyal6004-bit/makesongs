@@ -1,0 +1,11 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // 연결 코드(10자 이상)를 아는 사람만 접근. 파일 1개당 1GB 미만.
+    match /spaces/{spaceId}/{fileId} {
+      allow read: if spaceId.size() >= 10;
+      allow create, update: if spaceId.size() >= 10 && request.resource.size < 1024 * 1024 * 1024;
+      allow delete: if spaceId.size() >= 10;
+    }
+  }
+}
