@@ -152,6 +152,8 @@ body.has-mini .fab{bottom:calc(var(--navh) + var(--sb) + 82px)}
 .prow{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line);cursor:pointer}
 .prow input{width:22px;height:22px;flex:none;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--acc)}
 .prow .rb{flex:1;min-width:0}
+.plbox{max-height:220px;overflow:auto;background:var(--card2);border-radius:12px;padding:0 10px}
+.plbox .prow:last-child{border-bottom:0}
 .prow b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prow small{font-size:12px;color:var(--sub)}
 pre.diag{white-space:pre-wrap;word-break:break-all;background:#0b0c10;border-radius:10px;padding:10px;font-size:12px;color:#cfd3dc;max-height:260px;overflow:auto}
@@ -274,11 +276,20 @@ const liveIdea = id => { const x = id && byId(id); return x && !x.deleted && x.f
 function upsert(it){ it.updated = Date.now(); const k = items.findIndex(x => x.id === it.id); if(k<0) items.push(it); else items[k] = it; save(); scheduleSync(); }
 function merge(a, b){ const m = new Map(); for(const x of [...a, ...b]){ const y = m.get(x.id); if(!y || (x.updated||0) > (y.updated||0)) m.set(x.id, x); } return [...m.values()]; }
 const sig = arr => arr.map(x => x.id+':'+(x.updated||0)).sort().join('|');
-const sortOrd = L => L.slice().sort((a,b) => ((a.ord??1e9)-(b.ord??1e9)) || ((a.created||0)-(b.created||0)));
-const nextOrd = pl => pl ? live().filter(x => x.pl===pl && x.folder==='music').reduce((m,x)=>Math.max(m,(x.ord??-1)+1), 0) : 0;
+/* 플레이리스트 연결: 여러 개 가능 (pls 배열 + 플레이리스트별 순서 ords). 구버전 pl/ord 단일값도 읽음 */
+const plsOf = x => Array.isArray(x.pls) ? x.pls : (x.pl ? [x.pl] : []);
+const livePls = x => plsOf(x).map(liveIdea).filter(Boolean);
+const ordIn = (x, pl) => (x.ords && x.ords[pl] != null) ? x.ords[pl] : (x.pl === pl && x.ord != null ? x.ord : undefined);
+const sortOrd = (L, pl) => L.slice().sort((a,b) => ((ordIn(a,pl)??1e9)-(ordIn(b,pl)??1e9)) || ((a.created||0)-(b.created||0)));
+const nextOrd = (pl, exceptId) => pl ? live().filter(x => x.id !== exceptId && x.folder==='music' && plsOf(x).includes(pl)).reduce((m,x)=>Math.max(m,(ordIn(x,pl)??-1)+1), 0) : 0;
+function setPls(x, pls){
+  pls = [...new Set(pls.filter(Boolean))]; const ords = {};
+  for(const p of pls){ const o = ordIn(x, p); ords[p] = o != null ? o : nextOrd(p, x.id); }
+  x.pls = pls; x.ords = ords; delete x.pl; delete x.ord; return x;
+}
 function ideaStats(id){
-  const L = live().filter(x => x.pl === id);
-  const mus = sortOrd(L.filter(x => x.folder==='music'));
+  const L = live().filter(x => plsOf(x).includes(id));
+  const mus = sortOrd(L.filter(x => x.folder==='music'), id);
   return { mus, th: L.filter(x=>x.folder==='thumb'), vid: L.filter(x=>x.folder==='video'), dur: mus.reduce((a,x)=>a+((x.files&&x.files[0]&&x.files[0].dur)||0),0) };
 }
 
@@ -546,14 +557,14 @@ function visible(){
   let L = live().filter(x => x.folder === tab);
   if(filt !== 'all'){
     if(tab === 'idea') L = L.filter(x => (x.status||'idea') === filt);
-    else if(filt === 'none') L = L.filter(x => !liveIdea(x.pl));
-    else L = L.filter(x => x.pl === filt);
+    else if(filt === 'none') L = L.filter(x => !livePls(x).length);
+    else L = L.filter(x => plsOf(x).includes(filt));
   }
   if(q){
     const t = q.toLowerCase().replace(/^#/, '');
     L = L.filter(x => [x.title, x.memo, x.mood, (x.tags||[]).join(' '), ...(x.files||[]).map(f=>f.name)].join(' ').toLowerCase().includes(t));
   }
-  if(tab === 'music' && filt !== 'all' && filt !== 'none') return sortOrd(L);
+  if(tab === 'music' && filt !== 'all' && filt !== 'none') return sortOrd(L, filt);
   return L.sort((a,b) => (b.created||0) - (a.created||0));
 }
 function render(){
@@ -580,7 +591,7 @@ function render(){
     main.innerHTML = `<div class="empty"><b>${FOLD[tab].icon}</b>${q||filt!=='all' ? '조건에 맞는 항목이 없어요' : hint}<br><br>${q||filt!=='all' ? '' : '오른쪽 아래 ＋ 버튼으로 추가'}</div>`;
     return afterRender();
   }
-  const plName = x => { const p = liveIdea(x.pl); return p ? '💡 ' + p.title : ''; };
+  const plName = x => livePls(x).map(p => '💡 ' + p.title).join(', ');
   if(tab === 'thumb'){
     main.innerHTML = `<div class="grid">${L.map(x => `<button class="gcard" data-act="open" data-id="${x.id}">${x.files[0] ? phHTML(x.files[0], '🖼️') : (ytPh(x.ytUrl) || '<div class="ph">🔗</div>')}<div class="gt"><b>${esc(x.title||'제목 없음')}</b><small>${esc(plName(x) || (x.files[0] ? fmtSize(x.files[0].size) : '🔗 링크'))}</small></div></button>`).join('')}</div>`;
   } else if(tab === 'music'){
@@ -622,7 +633,7 @@ function renderDetail(force){
 }
 function tagsHTML(t){ return (t||[]).length ? `<div class="tags">${t.map(x=>`<span class="tag">#${esc(x)}</span>`).join('')}</div>` : ''; }
 function itemDetailHTML(it){
-  const f = (it.files||[])[0]; const p = liveIdea(it.pl);
+  const f = (it.files||[])[0]; const ps = livePls(it);
   let hero = '';
   if(it.folder === 'thumb' && f) hero = `<div class="hero" data-act="view" data-id="${it.id}" data-i="0" style="cursor:zoom-in"><img id="dImg" alt="" style="min-height:120px"></div>`;
   else if(it.folder === 'music' && f) hero = `<div class="bigplay"><button class="play" style="width:56px;height:56px;font-size:20px" data-act="playOne" data-id="${it.id}">▶</button><div><b>${esc(it.title)}</b><br><small style="color:var(--sub)">${f.dur?fmtDur(f.dur)+' · ':''}${fmtSize(f.size)} · ${esc((f.type||'').replace('audio/',''))}</small></div></div>`;
@@ -631,7 +642,7 @@ function itemDetailHTML(it){
   else if(it.folder === 'thumb' && ytId(it.ytUrl)) hero = `<a class="hero" style="display:block" href="${esc(it.ytUrl)}" target="_blank" rel="noopener">${ytPh(it.ytUrl)}</a>`;
   else if(it.folder === 'video' && ytId(it.ytUrl)) hero = `<a class="hero" style="display:block" href="${esc(it.ytUrl)}" target="_blank" rel="noopener">${ytPh(it.ytUrl)}</a>`;
   return `<h2>${FOLD[it.folder].icon} ${esc(it.title||'제목 없음')}</h2>${hero}
-    <div class="kv">${p?`<button class="badge" style="color:var(--tx)" data-act="open" data-id="${p.id}">💡 ${esc(p.title)} ›</button>`:'<span class="badge">플레이리스트 미연결</span>'}${f?`<span class="badge">${fileState(f)}</span>`:''}</div>
+    <div class="kv">${ps.length ? ps.map(p => `<button class="badge" style="color:var(--tx)" data-act="open" data-id="${p.id}">💡 ${esc(p.title)} ›</button>`).join('') : '<span class="badge">플레이리스트 미연결</span>'}${f?`<span class="badge">${fileState(f)}</span>`:''}</div>
     ${f?`<p class="note">📄 ${esc(f.name)} · ${fmtSize(f.size)}</p>`:''}
     ${it.ytUrl?`<p class="note">🔗 <a href="${esc(it.ytUrl)}" target="_blank" rel="noopener" style="word-break:break-all">${esc(it.ytUrl)}</a></p>`:''}
     ${tagsHTML(it.tags)}
@@ -684,7 +695,7 @@ function moveTrack(pl, id, d){
   const mus = ideaStats(pl).mus; const i = mus.findIndex(x => x.id === id), j = i + d;
   if(i < 0 || j < 0 || j >= mus.length) return;
   [mus[i], mus[j]] = [mus[j], mus[i]]; const now = Date.now();
-  mus.forEach((m,k) => { if(m.ord !== k){ m.ord = k; m.updated = now; } });
+  mus.forEach((m,k) => { if(ordIn(m, pl) !== k){ setPls(m, plsOf(m)); m.ords[pl] = k; m.updated = now; } });
   save(); scheduleSync(); render();
 }
 async function delItem(id){
@@ -703,21 +714,24 @@ async function delItem(id){
 let form = null;
 function openForm(folder, id, preset){
   const it = id ? byId(id) : null;
-  form = { folder, id: id||null, pend: [], keep: it ? (it.files||[]).map(f=>f.id) : [], pl: it ? (it.pl||'') : ((preset&&preset.pl) || (filt!=='all'&&filt!=='none'&&tab!=='idea'?filt:'')), busy: false };
+  form = { folder, id: id||null, pend: [], keep: it ? (it.files||[]).map(f=>f.id) : [], pls: it ? plsOf(it).filter(liveIdea) : ((preset&&preset.pl) ? [preset.pl] : (filt!=='all'&&filt!=='none'&&tab!=='idea'&&tab===folder ? [filt] : [])), busy: false };
   openLayer('form', renderForm);
 }
-function plOptions(sel){
+function plChecks(sel){
   const ideas = live().filter(x => x.folder === 'idea').sort((a,b)=>(b.created||0)-(a.created||0));
-  return `<option value="">— 연결 안 함 —</option>` + ideas.map(i => `<option value="${i.id}" ${i.id===sel?'selected':''}>💡 ${esc(i.title)}</option>`).join('');
+  if(!ideas.length) return '<p class="note">아직 아이디어(플레이리스트)가 없어요. 💡 탭에서 먼저 만들어주세요</p>';
+  return ideas.map(i => `<label class="prow"><input type="checkbox" data-plc="${i.id}" ${sel.includes(i.id)?'checked':''}><div class="rb"><b>💡 ${esc(i.title)}</b></div></label>`).join('');
 }
-function refreshFormPl(){ const s = $('#fPl'); if(s){ const v = s.value; s.innerHTML = plOptions(v); } }
+function syncPlChecks(){ const h = $('#fPl'); const box = $('#fPlBox'); if(!h || !box) return; const sel = h.value.split(',').filter(Boolean); box.innerHTML = plChecks(sel); wirePlChecks(); }
+function wirePlChecks(){ document.querySelectorAll('#fPlBox input[data-plc]').forEach(c => c.onchange = () => { $('#fPl').value = [...document.querySelectorAll('#fPlBox input[data-plc]:checked')].map(x => x.dataset.plc).join(','); }); }
+function refreshFormPl(){ syncPlChecks(); }
 function renderForm(){
   const f = form, fd = f.folder, it = f.id ? byId(f.id) : null, D = FOLD[fd];
   let h = `<h2>${it?'수정':'추가'} · ${D.icon} ${D.name}</h2>`;
   if(fd !== 'idea'){
     h += `<div class="fld"><label class="drop" id="fDrop"><input type="file" id="fFile" accept="${D.accept}" ${it?'':'multiple'}><span>${it ? '📂 파일 교체 (선택 사항)' : '📂 파일 선택 · 여러 개 가능' + (fd==='thumb'?' · 붙여넣기 가능':'')}<br><small>${fd==='music'?'WAV 원본 그대로 저장돼요 · 파일 없이 링크만 등록해도 돼요':fd==='video'?'영상 없이 유튜브 링크만 등록해도 돼요':'원본 화질 그대로 저장돼요 · 링크만 등록해도 돼요'}</small></span></label><div id="fPend" class="plist"></div></div>
       <div class="fld"><label>제목</label><input id="fTitle" value="${esc(it?it.title:'')}" placeholder="${it?'':'비우면 파일 이름 사용 (여러 개면 각 파일 이름)'}"></div>
-      <div class="fld"><label>플레이리스트 연결</label><select id="fPl">${plOptions(f.pl)}</select></div>
+      <div class="fld"><label>플레이리스트 연결 (여러 개 선택 가능)</label><input type="hidden" id="fPl" value="${esc(f.pls.join(','))}"><div id="fPlBox" class="plbox"></div></div>
       <div class="fld"><label>🔗 링크 (URL)</label><input id="fYt" type="url" inputmode="url" value="${esc(it?it.ytUrl||'':'')}" placeholder="${{thumb:'참고 이미지·캔바·드라이브 주소', music:'Suno·유튜브·구글드라이브 등 음원 주소', video:'https://youtu.be/...'}[fd]}"></div>`;
   } else {
     h += `<div class="fld"><label>플레이리스트 제목 *</label><input id="fTitle" value="${esc(it?it.title:'')}" placeholder="예: 새벽 2시 공부할 때 듣는 로파이"></div>
@@ -735,6 +749,7 @@ function renderForm(){
   f.init = formVals();
   const dr = loadDraft();
   if(dr){ for(const [k, v] of Object.entries(dr)){ const e = document.getElementById(k); if(e) e.value = v; } toast('작성 중이던 내용을 불러왔어요'); }
+  syncPlChecks();
   $('#formBody').addEventListener('input', saveDraft);
   $('#formBody').addEventListener('change', saveDraft);
   const inp = $('#fFile');
@@ -786,7 +801,7 @@ async function saveForm(){
   const fd = f.folder, it = f.id ? byId(f.id) : null, now = Date.now();
   const title = $('#fTitle').value.trim(), tags = parseTags($('#fTags').value), memo = $('#fMemo').value.trim();
   const yt = $('#fYt') ? $('#fYt').value.trim() : '';
-  const pl = $('#fPl') ? $('#fPl').value : '';
+  const pls = $('#fPl') ? $('#fPl').value.split(',').filter(liveIdea) : [];
   if(fd === 'idea' && !title) return toast('제목을 입력하세요');
   if(fd !== 'idea' && !it && !f.pend.length && !yt) return toast('파일을 선택하거나 링크를 입력하세요');
   if(fd !== 'idea' && !it && !f.pend.length && !title) return toast('제목을 입력하세요');
@@ -803,16 +818,14 @@ async function saveForm(){
       old.filter(m => !f.keep.includes(m.id)).forEach(purgeMedia);
       upsert({ ...(it || { id: uid(), folder:'idea', created: now }), title, status: $('#fSt').value, mood: $('#fMood').value.trim(), target: $('#fTgt').value.replace(/[^\d.]/g,''), ytUrl: yt, tags, memo, files: [...old.filter(m => f.keep.includes(m.id)), ...metas] });
     } else if(it){
-      const o = { ...it, title: title || it.title, tags, memo, pl };
+      const o = setPls({ ...it, title: title || it.title, tags, memo }, pls);
       o.ytUrl = yt;
-      if(pl !== (it.pl||'')) o.ord = nextOrd(pl);
       if(metas[0]){ (it.files||[]).forEach(purgeMedia); o.files = [metas[0]]; if(!title) o.title = stripExt(metas[0].name); }
       upsert(o);
     } else if(!metas.length){
-      upsert({ id: uid(), folder: fd, created: now, title, tags, memo, pl, ytUrl: yt, files: [], ord: nextOrd(pl) });
+      upsert(setPls({ id: uid(), folder: fd, created: now, title, tags, memo, ytUrl: yt, files: [] }, pls));
     } else {
-      let ord = nextOrd(pl);
-      metas.forEach((m, i) => items.push({ id: uid(), folder: fd, created: now + i, updated: now + i, title: (metas.length === 1 && title) || stripExt(m.name), tags, memo, pl, files: [m], ord: ord++, ytUrl: yt }));
+      metas.forEach((m, i) => { const x = { id: uid(), folder: fd, created: now + i, updated: now + i, title: (metas.length === 1 && title) || stripExt(m.name), tags, memo, files: [m], ytUrl: yt }; items.push(x); setPls(x, pls); });
       save(); scheduleSync();
     }
     clearDraft(); f.saved = true;
@@ -834,23 +847,23 @@ let pick = null;
 function openPick(ideaId, folder){
   const cand = live().filter(x => x.folder === folder).sort((a,b)=>(b.created||0)-(a.created||0));
   if(!cand.length) return toast(`${FOLD[folder].name} 폴더가 비어 있어요. '새로' 버튼으로 올려보세요`);
-  pick = { idea: ideaId, folder, cand, sel: new Set(cand.filter(x => x.pl === ideaId).map(x => x.id)) };
+  pick = { idea: ideaId, folder, cand, sel: new Set(cand.filter(x => plsOf(x).includes(ideaId)).map(x => x.id)) };
   openLayer('pick', renderPick);
 }
 function renderPick(){
   const p = pick, idea = byId(p.idea);
   $('#pickBody').innerHTML = `<h2>${FOLD[p.folder].icon} ${FOLD[p.folder].name} 연결</h2><p class="note">💡 ${esc(idea?idea.title:'')} 에 넣을 항목을 고르세요</p>
-    <div>${p.cand.map(x => { const o = liveIdea(x.pl); const f = (x.files||[])[0]||{};
-      return `<label class="prow"><input type="checkbox" data-pid="${x.id}" ${p.sel.has(x.id)?'checked':''}><div class="rb"><b>${esc(x.title)}</b><small>${[f.dur?fmtDur(f.dur):'', f.size?fmtSize(f.size):'', o && o.id!==p.idea ? '현재: 💡 '+o.title : ''].filter(Boolean).map(esc).join(' · ')}</small></div></label>`; }).join('')}</div>
+    <div>${p.cand.map(x => { const os = livePls(x).filter(o => o.id !== p.idea); const f = (x.files||[])[0]||{};
+      return `<label class="prow"><input type="checkbox" data-pid="${x.id}" ${p.sel.has(x.id)?'checked':''}><div class="rb"><b>${esc(x.title)}</b><small>${[f.dur?fmtDur(f.dur):'', f.size?fmtSize(f.size):'', os.length ? '다른 리스트: ' + os.map(o => o.title).join(', ') : ''].filter(Boolean).map(esc).join(' · ')}</small></div></label>`; }).join('')}</div>
     <div class="btns"><button class="btn" data-act="back">취소</button><button class="btn pri" data-act="savePick">적용</button></div>`;
   $('#pickBody').querySelectorAll('input[data-pid]').forEach(c => c.onchange = () => c.checked ? p.sel.add(c.dataset.pid) : p.sel.delete(c.dataset.pid));
 }
 function savePick(){
-  const p = pick; let ord = nextOrd(p.idea); const now = Date.now(); let n = 0;
+  const p = pick; const now = Date.now(); let n = 0;
   for(const x of p.cand){
-    const want = p.sel.has(x.id);
-    if(want && x.pl !== p.idea){ x.pl = p.idea; x.ord = ord++; x.updated = now; n++; }
-    else if(!want && x.pl === p.idea){ x.pl = ''; x.updated = now; n++; }
+    const want = p.sel.has(x.id), has = plsOf(x).includes(p.idea);
+    if(want && !has){ setPls(x, [...plsOf(x), p.idea]); x.updated = now; n++; }
+    else if(!want && has){ setPls(x, plsOf(x).filter(q => q !== p.idea)); x.updated = now; n++; }
   }
   if(n){ save(); scheduleSync(); }
   uiBack(); render();
@@ -858,8 +871,9 @@ function savePick(){
 
 /* ================= 미니 플레이어 ================= */
 const player = new Audio(); player.preload = 'metadata';
-let queue = [], qi = -1;
-async function playQueue(ids, start){ queue = ids; qi = start; await playCur(); }
+let queue = [], qi = -1, queuePl = '';
+const curPl = it => liveIdea(queuePl) && plsOf(it).includes(queuePl) ? liveIdea(queuePl) : livePls(it)[0];
+async function playQueue(ids, start, pl){ queue = ids; qi = start; queuePl = pl || ''; await playCur(); }
 async function playCur(){
   const it = byId(queue[qi]); if(!it || it.deleted) return closeMini();
   if(!(it.files||[])[0]){ if(qi < queue.length-1){ qi++; return playCur(); } return; } // 링크만 있는 곡은 건너뜀
@@ -870,7 +884,7 @@ async function playCur(){
 function showMini(){
   const it = byId(queue[qi]); if(!it) return;
   document.body.classList.add('has-mini'); $('#mini').classList.remove('hidden');
-  $('#mTitle').textContent = it.title; const p = liveIdea(it.pl);
+  $('#mTitle').textContent = it.title; const p = curPl(it);
   $('#mSub').textContent = `${qi+1}/${queue.length}` + (p ? ` · 💡 ${p.title}` : '');
   if('mediaSession' in navigator){ try { navigator.mediaSession.metadata = new MediaMetadata({ title: it.title, artist: p ? p.title : '플레이리스트 스튜디오' }); } catch {} }
   render();
@@ -880,7 +894,7 @@ function step(d){ if(!queue.length) return; if(d < 0 && player.currentTime > 3){
 player.addEventListener('ended', () => { if(qi < queue.length-1){ qi++; playCur(); } else { $('#mPlay').textContent = '▶'; render(); } });
 player.addEventListener('play', () => { $('#mPlay').textContent = '⏸'; render(); });
 player.addEventListener('pause', () => { $('#mPlay').textContent = '▶'; render(); });
-player.addEventListener('timeupdate', () => { $('#mBar i').style.width = (player.duration ? player.currentTime/player.duration*100 : 0) + '%'; const it = byId(queue[qi]); if(it){ const p = liveIdea(it.pl); $('#mSub').textContent = `${qi+1}/${queue.length} · ${fmtDur(player.currentTime)} / ${fmtDur(player.duration||0)}` + (p ? ` · 💡 ${p.title}` : ''); } });
+player.addEventListener('timeupdate', () => { $('#mBar i').style.width = (player.duration ? player.currentTime/player.duration*100 : 0) + '%'; const it = byId(queue[qi]); if(it){ const p = curPl(it); $('#mSub').textContent = `${qi+1}/${queue.length} · ${fmtDur(player.currentTime)} / ${fmtDur(player.duration||0)}` + (p ? ` · 💡 ${p.title}` : ''); } });
 $('#mBar').addEventListener('click', e => { if(!player.duration) return; const r = e.currentTarget.getBoundingClientRect(); player.currentTime = (e.clientX - r.left) / r.width * player.duration; });
 if('mediaSession' in navigator){ try {
   navigator.mediaSession.setActionHandler('nexttrack', () => step(1)); navigator.mediaSession.setActionHandler('previoustrack', () => step(-1));
@@ -1018,9 +1032,9 @@ const ACT = {
   chip: d => { filt = d.v; render(); },
   add: () => openForm(tab),
   open: d => openDetail(d.id),
-  play: d => { if(queue[qi] === d.id){ player.paused ? player.play() : player.pause(); return; } const L = visible().map(x => x.id); playQueue(L, L.indexOf(d.id)); },
-  playOne: d => { const it = byId(d.id); const L = liveIdea(it.pl) ? ideaStats(it.pl).mus.map(x=>x.id) : [d.id]; playQueue(L, Math.max(0, L.indexOf(d.id))); },
-  playIdea: d => { const L = ideaStats(d.id).mus.map(x => x.id); playQueue(L, +d.i || 0); },
+  play: d => { if(queue[qi] === d.id){ player.paused ? player.play() : player.pause(); return; } const L = visible().map(x => x.id); playQueue(L, L.indexOf(d.id), filt !== 'all' && filt !== 'none' ? filt : ''); },
+  playOne: d => { const it = byId(d.id); const p = livePls(it)[0]; const L = p ? ideaStats(p.id).mus.map(x=>x.id) : [d.id]; playQueue(L, Math.max(0, L.indexOf(d.id)), p && p.id); },
+  playIdea: d => { const L = ideaStats(d.id).mus.map(x => x.id); playQueue(L, +d.i || 0, d.id); },
   edit: d => { const it = byId(d.id); openForm(it.folder, it.id); },
   del: d => delItem(d.id),
   dl: d => { const it = byId(d.id); if(it && it.files[0]) download(it.files[0]); },
@@ -1036,7 +1050,7 @@ const ACT = {
   saveForm, unpend: d => { const x = form.pend.splice(+d.v, 1)[0]; if(x && x._u) URL.revokeObjectURL(x._u); renderPend(); },
   unkeep: d => { form.keep = form.keep.filter(x => x !== d.v); renderPend(); },
   mToggle: () => player.paused ? player.play() : player.pause(), mPrev: () => step(-1), mNext: () => step(1), mClose: closeMini,
-  miniOpen: () => { const it = byId(queue[qi]); if(it) openDetail(liveIdea(it.pl) ? it.pl : it.id); },
+  miniOpen: () => { const it = byId(queue[qi]); if(!it) return; const p = curPl(it); openDetail(p ? p.id : it.id); },
   settings: () => openLayer('settings', renderSettings),
   newCode: () => { localStorage.setItem(LS.code, genCode()); connect(); renderSettings(); toast('연결 코드를 만들었어요. 다른 기기에 이 코드를 입력하세요'); },
   copyCode: async () => { await copyText(getCode()); toast('코드를 복사했어요'); },
