@@ -52,6 +52,9 @@ main{padding:8px 16px}
 .gcard{background:var(--card);border-radius:var(--r);overflow:hidden;text-align:left}
 .ph{aspect-ratio:16/9;background:var(--card2) center/cover no-repeat;display:grid;place-items:center;color:var(--sub);font-size:22px}
 .ph.has{font-size:0}
+.ph .pend{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:20px}
+.ph .pend small{font-size:11px;color:var(--sub)}
+.ph.has .pend{display:none}
 .gcard .gt{padding:8px 10px 10px}
 .gt b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gt small{color:var(--sub);font-size:11px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -400,6 +403,7 @@ const io = new IntersectionObserver(es => {
 function observeThumbs(root){ root.querySelectorAll('[data-fid]:not(.has)').forEach(el => io.observe(el)); }
 function phHTML(f, fallback, extra=''){
   if(!f) return `<div class="ph ${extra}">${fallback}</div>`;
+  if(!f.up && !f.big && getCode()) fallback = `<span class="pend">⏳<small>클라우드 업로드 대기</small></span>`;
   const u = ucache.get(f.id+'_t');
   return u ? `<div class="ph has ${extra}" style="background-image:url('${u}')">${fallback}</div>` : `<div class="ph ${extra}" data-fid="${f.id}">${fallback}</div>`;
 }
@@ -486,7 +490,8 @@ async function push(){
   } catch(e) { setSync('err'); toast('동기화 저장 실패: ' + explain(e), 4000); }
   finally { pushing = false; }
 }
-let upBusy = false, upAgain = false;
+let upBusy = false, upAgain = false, upErr = '', upRetryT = null;
+const pendingUploads = () => live().reduce((n, it) => n + (it.files||[]).filter(f => !f.up && !f.big).length, 0);
 function uploadBlob(path, blob, label){
   return new Promise((res, rej) => {
     const { S, st } = fb;
@@ -517,9 +522,14 @@ async function processUploads(){
         markFile(it.id, f.id, { up:1 }); n++;
       }
     }
+    upErr = '';
     if(n) { toast(`☁️ ${n}개 파일 업로드 완료`); render(); }
-  } catch(e) { toast('파일 업로드 실패: ' + explain(e), 4500); }
-  finally { upBusy = false; hideProgress(); if(upAgain) setTimeout(processUploads, 500); }
+  } catch(e) {
+    upErr = `${explain(e)} (${(e && e.code) || (e && e.message) || ''})`;
+    toast('파일 업로드 실패: ' + explain(e) + ' — ⚙️ 설정에서 확인', 5000);
+    clearTimeout(upRetryT); upRetryT = setTimeout(processUploads, 60000); // 1분 뒤 자동 재시도
+  }
+  finally { upBusy = false; hideProgress(); if(upAgain) setTimeout(processUploads, 500); if(isOpen('settings')) renderSettings(); }
 }
 const rurl = new Map();
 async function remoteURL(key){
@@ -930,7 +940,9 @@ async function renderSettings(){
       <button class="btn sm" data-act="enterCode">⌨️ 다른 기기 코드 입력</button>
       ${code ? `<button class="btn sm danger" data-act="clearCode">연결 해제</button>` : ''}
     </div>
-    <div class="btns"><button class="btn" data-act="diag">🩺 동기화 상태 점검</button></div>
+    <p class="note">📁 파일 업로드: ${pendingUploads() ? `⏳ 대기 ${pendingUploads()}개${upBusy ? ' (업로드 중…)' : ''}` : '✅ 대기 없음'}${upErr ? `<br><span style="color:var(--err)">마지막 오류: ${esc(upErr)}</span>` : ''}</p>
+    <p class="note">'대기'는 파일을 처음 올린 기기에서 업로드돼야 다른 기기에 보여요. 처음 올린 기기에서 앱을 열어두세요.</p>
+    <div class="btns"><button class="btn" data-act="diag">🩺 동기화 상태 점검</button><button class="btn" data-act="retryUp">⬆ 업로드 다시 시도</button></div>
     <pre class="diag hidden" id="diagOut"></pre>
     <h4>Firebase 설정</h4>
     <textarea id="cfgIn" placeholder="Firebase 콘솔 → 프로젝트 설정 → 내 앱 → SDK 설정의 firebaseConfig 내용을 그대로 붙여넣기">${custom ? esc(JSON.stringify(cfg, null, 2)) : ''}</textarea>
@@ -1005,7 +1017,8 @@ const ACT = {
   clearCode: () => { if(!confirm('이 기기의 동기화를 끌까요? (이 기기 자료는 그대로 남아요)')) return; localStorage.removeItem(LS.code); connect(); renderSettings(); },
   saveCfg: () => { const c = parseCfg($('#cfgIn').value); if(!c) return toast('firebaseConfig 형식을 확인하세요 (apiKey, projectId 필요)'); localStorage.setItem(LS.cfg, JSON.stringify(c)); toast('저장했어요. 다시 불러옵니다'); setTimeout(() => location.reload(), 600); },
   clearCfg: () => { localStorage.removeItem(LS.cfg); location.reload(); },
-  diag, export: exportJSON, import: () => $('#importFile').click(),
+  diag, export: exportJSON,
+  retryUp: () => { upErr = ''; clearTimeout(upRetryT); toast('업로드를 다시 시도해요'); processUploads().then(() => isOpen('settings') && renderSettings()); }, import: () => $('#importFile').click(),
 };
 document.addEventListener('click', e => {
   const a = e.target.closest('[data-act]'); if(!a) return;
