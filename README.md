@@ -52,12 +52,12 @@
 ### ④ CORS 설정 (오프라인 저장·다운로드용, 1회)
 안 해도 사진·음악·영상은 보이지만, 다른 기기에서 받은 파일을 오프라인 저장하려면 필요해요.
 1. [Google Cloud Console](https://console.cloud.google.com) 에서 같은 프로젝트 선택 → 오른쪽 위 **Cloud Shell 활성화** (`>_` 아이콘)
-2. 아래를 붙여넣고 엔터 (`내버킷` 은 Storage 화면 위쪽 `gs://...` 주소)
+2. 아래를 붙여넣고 엔터
    ```bash
    cat > cors.json <<'EOF'
    [ { "origin": ["*"], "method": ["GET"], "responseHeader": ["Content-Type"], "maxAgeSeconds": 3600 } ]
    EOF
-   gcloud storage buckets update gs://내버킷.firebasestorage.app --cors-file=cors.json
+   gcloud storage buckets update gs://makesongs-429e1.firebasestorage.app --cors-file=cors.json
    ```
 
 ## 3. 폰 ↔ PC 연결
