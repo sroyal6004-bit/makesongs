@@ -582,10 +582,11 @@ function render(){
   }
   const plName = x => { const p = liveIdea(x.pl); return p ? '💡 ' + p.title : ''; };
   if(tab === 'thumb'){
-    main.innerHTML = `<div class="grid">${L.map(x => `<button class="gcard" data-act="open" data-id="${x.id}">${phHTML(x.files[0], '🖼️')}<div class="gt"><b>${esc(x.title||'제목 없음')}</b><small>${esc(plName(x) || fmtSize(x.files[0]?.size))}</small></div></button>`).join('')}</div>`;
+    main.innerHTML = `<div class="grid">${L.map(x => `<button class="gcard" data-act="open" data-id="${x.id}">${x.files[0] ? phHTML(x.files[0], '🖼️') : (ytPh(x.ytUrl) || '<div class="ph">🔗</div>')}<div class="gt"><b>${esc(x.title||'제목 없음')}</b><small>${esc(plName(x) || (x.files[0] ? fmtSize(x.files[0].size) : '🔗 링크'))}</small></div></button>`).join('')}</div>`;
   } else if(tab === 'music'){
     main.innerHTML = `<div class="rows">${L.map(x => { const f = x.files[0]||{}; const now = queue[qi] === x.id;
-      return `<div class="row"><button class="play ${now?'now':''}" data-act="play" data-id="${x.id}">${now && !player.paused ? '❚❚' : '▶'}</button><button class="rb" style="text-align:left" data-act="open" data-id="${x.id}"><b>${esc(x.title||'제목 없음')}</b><small>${[f.dur?fmtDur(f.dur):'', fmtSize(f.size), f.up?'☁️':'', plName(x)].filter(Boolean).map(esc).join(' · ')}</small></button></div>`; }).join('')}</div>`;
+      const playBtn = x.files[0] ? `<button class="play ${now?'now':''}" data-act="play" data-id="${x.id}">${now && !player.paused ? '❚❚' : '▶'}</button>` : x.ytUrl ? `<a class="play" href="${esc(x.ytUrl)}" target="_blank" rel="noopener" style="text-decoration:none">🔗</a>` : `<span class="play">🎵</span>`;
+      return `<div class="row">${playBtn}<button class="rb" style="text-align:left" data-act="open" data-id="${x.id}"><b>${esc(x.title||'제목 없음')}</b><small>${[f.dur?fmtDur(f.dur):'', f.size?fmtSize(f.size):'', f.up?'☁️':'', x.ytUrl?'🔗 링크':'', plName(x)].filter(Boolean).map(esc).join(' · ')}</small></button></div>`; }).join('')}</div>`;
   } else if(tab === 'video'){
     main.innerHTML = `<div class="rows">${L.map(x => { const f = x.files[0];
       return `<button class="row" data-act="open" data-id="${x.id}"><div class="vthumb">${f ? phHTML(f,'🎬') : (ytPh(x.ytUrl) || '<div class="ph">🎬</div>')}</div><div class="rb"><b>${esc(x.title||'제목 없음')}</b><small>${[f&&f.dur?fmtDur(f.dur):'', f?fmtSize(f.size):'', x.ytUrl?'▶ YouTube':''].filter(Boolean).join(' · ')}</small><small>${esc(plName(x))}</small></div></button>`; }).join('')}</div>`;
@@ -626,11 +627,13 @@ function itemDetailHTML(it){
   if(it.folder === 'thumb' && f) hero = `<div class="hero" data-act="view" data-id="${it.id}" data-i="0" style="cursor:zoom-in"><img id="dImg" alt="" style="min-height:120px"></div>`;
   else if(it.folder === 'music' && f) hero = `<div class="bigplay"><button class="play" style="width:56px;height:56px;font-size:20px" data-act="playOne" data-id="${it.id}">▶</button><div><b>${esc(it.title)}</b><br><small style="color:var(--sub)">${f.dur?fmtDur(f.dur)+' · ':''}${fmtSize(f.size)} · ${esc((f.type||'').replace('audio/',''))}</small></div></div>`;
   else if(it.folder === 'video' && f) hero = `<div class="hero"><video id="dVideo" controls playsinline preload="metadata"></video></div>`;
+  else if(it.folder === 'music' && it.ytUrl) hero = `<a class="bigplay" style="text-decoration:none;color:inherit" href="${esc(it.ytUrl)}" target="_blank" rel="noopener"><span class="play" style="width:56px;height:56px;font-size:20px">🔗</span><div><b>${esc(it.title)}</b><br><small style="color:var(--sub)">링크로 열기</small></div></a>`;
+  else if(it.folder === 'thumb' && ytId(it.ytUrl)) hero = `<a class="hero" style="display:block" href="${esc(it.ytUrl)}" target="_blank" rel="noopener">${ytPh(it.ytUrl)}</a>`;
   else if(it.folder === 'video' && ytId(it.ytUrl)) hero = `<a class="hero" style="display:block" href="${esc(it.ytUrl)}" target="_blank" rel="noopener">${ytPh(it.ytUrl)}</a>`;
   return `<h2>${FOLD[it.folder].icon} ${esc(it.title||'제목 없음')}</h2>${hero}
     <div class="kv">${p?`<button class="badge" style="color:var(--tx)" data-act="open" data-id="${p.id}">💡 ${esc(p.title)} ›</button>`:'<span class="badge">플레이리스트 미연결</span>'}${f?`<span class="badge">${fileState(f)}</span>`:''}</div>
     ${f?`<p class="note">📄 ${esc(f.name)} · ${fmtSize(f.size)}</p>`:''}
-    ${it.ytUrl?`<p class="note">▶ <a href="${esc(it.ytUrl)}" target="_blank" rel="noopener">${esc(it.ytUrl)}</a></p>`:''}
+    ${it.ytUrl?`<p class="note">🔗 <a href="${esc(it.ytUrl)}" target="_blank" rel="noopener" style="word-break:break-all">${esc(it.ytUrl)}</a></p>`:''}
     ${tagsHTML(it.tags)}
     ${it.memo?`<h4>메모</h4><div class="memo">${linkify(it.memo)}</div>`:''}
     <div class="btns">${f?`<button class="btn" data-act="dl" data-id="${it.id}">⬇ 다운로드</button>`:''}<button class="btn" data-act="edit" data-id="${it.id}">✏️ 수정</button><button class="btn danger" data-act="del" data-id="${it.id}">🗑️</button></div>`;
@@ -712,10 +715,10 @@ function renderForm(){
   const f = form, fd = f.folder, it = f.id ? byId(f.id) : null, D = FOLD[fd];
   let h = `<h2>${it?'수정':'추가'} · ${D.icon} ${D.name}</h2>`;
   if(fd !== 'idea'){
-    h += `<div class="fld"><label class="drop" id="fDrop"><input type="file" id="fFile" accept="${D.accept}" ${it?'':'multiple'}><span>${it ? '📂 파일 교체 (선택 사항)' : '📂 파일 선택 · 여러 개 가능' + (fd==='thumb'?' · 붙여넣기 가능':'')}<br><small>${fd==='music'?'WAV 원본 그대로 저장돼요':fd==='video'?'영상 없이 유튜브 링크만 등록해도 돼요':'원본 화질 그대로 저장돼요'}</small></span></label><div id="fPend" class="plist"></div></div>
+    h += `<div class="fld"><label class="drop" id="fDrop"><input type="file" id="fFile" accept="${D.accept}" ${it?'':'multiple'}><span>${it ? '📂 파일 교체 (선택 사항)' : '📂 파일 선택 · 여러 개 가능' + (fd==='thumb'?' · 붙여넣기 가능':'')}<br><small>${fd==='music'?'WAV 원본 그대로 저장돼요 · 파일 없이 링크만 등록해도 돼요':fd==='video'?'영상 없이 유튜브 링크만 등록해도 돼요':'원본 화질 그대로 저장돼요 · 링크만 등록해도 돼요'}</small></span></label><div id="fPend" class="plist"></div></div>
       <div class="fld"><label>제목</label><input id="fTitle" value="${esc(it?it.title:'')}" placeholder="${it?'':'비우면 파일 이름 사용 (여러 개면 각 파일 이름)'}"></div>
       <div class="fld"><label>플레이리스트 연결</label><select id="fPl">${plOptions(f.pl)}</select></div>
-      ${fd==='video'?`<div class="fld"><label>유튜브 링크</label><input id="fYt" type="url" inputmode="url" value="${esc(it?it.ytUrl||'':'')}" placeholder="https://youtu.be/..."></div>`:''}`;
+      <div class="fld"><label>🔗 링크 (URL)</label><input id="fYt" type="url" inputmode="url" value="${esc(it?it.ytUrl||'':'')}" placeholder="${{thumb:'참고 이미지·캔바·드라이브 주소', music:'Suno·유튜브·구글드라이브 등 음원 주소', video:'https://youtu.be/...'}[fd]}"></div>`;
   } else {
     h += `<div class="fld"><label>플레이리스트 제목 *</label><input id="fTitle" value="${esc(it?it.title:'')}" placeholder="예: 새벽 2시 공부할 때 듣는 로파이"></div>
       <div class="fld"><label>진행 상태</label><select id="fSt">${Object.entries(STATUS).map(([k,l])=>`<option value="${k}" ${(it?it.status||'idea':'idea')===k?'selected':''}>${l}</option>`).join('')}</select></div>
@@ -785,8 +788,8 @@ async function saveForm(){
   const yt = $('#fYt') ? $('#fYt').value.trim() : '';
   const pl = $('#fPl') ? $('#fPl').value : '';
   if(fd === 'idea' && !title) return toast('제목을 입력하세요');
-  if(fd !== 'idea' && !it && !f.pend.length && !(fd === 'video' && yt)) return toast(fd==='video' ? '파일을 선택하거나 유튜브 링크를 입력하세요' : '파일을 선택하세요');
-  if(fd === 'video' && !it && !f.pend.length && !title) return toast('제목을 입력하세요');
+  if(fd !== 'idea' && !it && !f.pend.length && !yt) return toast('파일을 선택하거나 링크를 입력하세요');
+  if(fd !== 'idea' && !it && !f.pend.length && !title) return toast('제목을 입력하세요');
   f.busy = true; const btn = $('#fSave'); btn.disabled = true;
   try {
     const metas = [];
@@ -801,7 +804,7 @@ async function saveForm(){
       upsert({ ...(it || { id: uid(), folder:'idea', created: now }), title, status: $('#fSt').value, mood: $('#fMood').value.trim(), target: $('#fTgt').value.replace(/[^\d.]/g,''), ytUrl: yt, tags, memo, files: [...old.filter(m => f.keep.includes(m.id)), ...metas] });
     } else if(it){
       const o = { ...it, title: title || it.title, tags, memo, pl };
-      if(fd === 'video') o.ytUrl = yt;
+      o.ytUrl = yt;
       if(pl !== (it.pl||'')) o.ord = nextOrd(pl);
       if(metas[0]){ (it.files||[]).forEach(purgeMedia); o.files = [metas[0]]; if(!title) o.title = stripExt(metas[0].name); }
       upsert(o);
@@ -809,7 +812,7 @@ async function saveForm(){
       upsert({ id: uid(), folder: fd, created: now, title, tags, memo, pl, ytUrl: yt, files: [], ord: nextOrd(pl) });
     } else {
       let ord = nextOrd(pl);
-      metas.forEach((m, i) => items.push({ id: uid(), folder: fd, created: now + i, updated: now + i, title: (metas.length === 1 && title) || stripExt(m.name), tags, memo, pl, files: [m], ord: ord++, ...(fd==='video'?{ytUrl:yt}:{}) }));
+      metas.forEach((m, i) => items.push({ id: uid(), folder: fd, created: now + i, updated: now + i, title: (metas.length === 1 && title) || stripExt(m.name), tags, memo, pl, files: [m], ord: ord++, ytUrl: yt }));
       save(); scheduleSync();
     }
     clearDraft(); f.saved = true;
@@ -858,7 +861,8 @@ const player = new Audio(); player.preload = 'metadata';
 let queue = [], qi = -1;
 async function playQueue(ids, start){ queue = ids; qi = start; await playCur(); }
 async function playCur(){
-  const it = byId(queue[qi]); if(!it || it.deleted || !(it.files||[])[0]) return closeMini();
+  const it = byId(queue[qi]); if(!it || it.deleted) return closeMini();
+  if(!(it.files||[])[0]){ if(qi < queue.length-1){ qi++; return playCur(); } return; } // 링크만 있는 곡은 건너뜀
   const src = await fullSrc(it.files[0], true);
   if(!src){ toast(`"${it.title}" 파일이 이 기기에 없어요 (업로드 전이거나 다른 기기에만 있음)`); if(qi < queue.length-1){ qi++; return playCur(); } return; }
   player.src = src; player.play().catch(() => {}); showMini();
