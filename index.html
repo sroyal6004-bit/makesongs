@@ -49,7 +49,8 @@ main{padding:8px 16px}
 /* grid (thumbnails) */
 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
 @media(min-width:560px){.grid{grid-template-columns:repeat(3,1fr)}}
-.gcard{background:var(--card);border-radius:var(--r);overflow:hidden;text-align:left}
+.vbadge{position:absolute;top:6px;left:6px;z-index:1;font-size:11px;background:rgba(0,0,0,.65);color:#fff;padding:2px 7px;border-radius:999px}
+.gcard{position:relative;background:var(--card);border-radius:var(--r);overflow:hidden;text-align:left}
 .ph{aspect-ratio:16/9;background:var(--card2) center/cover no-repeat;display:grid;place-items:center;color:var(--sub);font-size:22px}
 .ph.has{font-size:0}
 .ph .pend{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:20px}
@@ -219,7 +220,7 @@ pre.diag{white-space:pre-wrap;word-break:break-all;background:#0b0c10;border-rad
 /* ================= 기본 ================= */
 const APP_VER = '1.0.0';
 const FOLD = {
-  thumb: { name:'썸네일', icon:'🖼️', accept:'image/*' },
+  thumb: { name:'썸네일', icon:'🖼️', accept:'image/*,video/*,.mp4,.mov,.webm' },
   music: { name:'WAV 음악', icon:'🎵', accept:'audio/*,.wav,.mp3,.flac,.m4a,.aac,.ogg' },
   video: { name:'완성 영상', icon:'🎬', accept:'video/*,.mp4,.mov,.webm,.mkv' },
   idea:  { name:'아이디어', icon:'💡', accept:'image/*' },
@@ -599,7 +600,7 @@ function render(){
   }
   const plName = x => livePls(x).map(p => '💡 ' + p.title).join(', ');
   if(tab === 'thumb'){
-    main.innerHTML = `<div class="grid">${L.map(x => `<button class="gcard" data-act="open" data-id="${x.id}">${x.files[0] ? phHTML(x.files[0], '🖼️') : (ytPh(x.ytUrl) || '<div class="ph">🔗</div>')}<div class="gt"><b>${esc(x.title||'제목 없음')}</b><small>${esc(plName(x) || (x.files[0] ? fmtSize(x.files[0].size) : '🔗 링크'))}</small></div></button>`).join('')}</div>`;
+    main.innerHTML = `<div class="grid">${L.map(x => `<button class="gcard" data-act="open" data-id="${x.id}">${x.files[0] && isVid(x.files[0]) ? '<span class="vbadge">▶ 영상</span>' : ''}${x.files[0] ? phHTML(x.files[0], isVid(x.files[0]) ? '🎬' : '🖼️') : (ytPh(x.ytUrl) || '<div class="ph">🔗</div>')}<div class="gt"><b>${esc(x.title||'제목 없음')}</b><small>${esc(plName(x) || (x.files[0] ? fmtSize(x.files[0].size) : '🔗 링크'))}</small></div></button>`).join('')}</div>`;
   } else if(tab === 'music'){
     main.innerHTML = `<div class="rows">${L.map(x => { const f = x.files[0]||{}; const now = queue[qi] === x.id;
       const playBtn = x.files[0] ? `<button class="play ${now?'now':''}" data-act="play" data-id="${x.id}">${now && !player.paused ? '❚❚' : '▶'}</button>` : x.ytUrl ? `<a class="play" href="${esc(x.ytUrl)}" target="_blank" rel="noopener" style="text-decoration:none">🔗</a>` : `<span class="play">🎵</span>`;
@@ -643,7 +644,8 @@ function tagsHTML(t){ return (t||[]).length ? `<div class="tags">${t.map(x=>`<sp
 function itemDetailHTML(it){
   const f = (it.files||[])[0]; const ps = livePls(it);
   let hero = '';
-  if(it.folder === 'thumb' && f) hero = `<div class="hero" data-act="view" data-id="${it.id}" data-i="0" style="cursor:zoom-in"><img id="dImg" alt="" style="min-height:120px"></div>`;
+  if(it.folder === 'thumb' && f && isVid(f)) hero = `<div class="hero"><video id="dVideo" controls playsinline preload="metadata"></video></div>`;
+  else if(it.folder === 'thumb' && f) hero = `<div class="hero" data-act="view" data-id="${it.id}" data-i="0" style="cursor:zoom-in"><img id="dImg" alt="" style="min-height:120px"></div>`;
   else if(it.folder === 'music' && f) hero = `<div class="bigplay"><button class="play" style="width:56px;height:56px;font-size:20px" data-act="playOne" data-id="${it.id}">▶</button><div><b>${esc(it.title)}</b><br><small style="color:var(--sub)">${f.dur?fmtDur(f.dur)+' · ':''}${fmtSize(f.size)} · ${esc((f.type||'').replace('audio/',''))}</small></div></div>`;
   else if(it.folder === 'video' && f) hero = `<div class="hero"><video id="dVideo" controls playsinline preload="metadata"></video></div>`;
   else if(it.folder === 'music' && it.ytUrl) hero = `<a class="bigplay" style="text-decoration:none;color:inherit" href="${esc(it.ytUrl)}" target="_blank" rel="noopener"><span class="play" style="width:56px;height:56px;font-size:20px">🔗</span><div><b>${esc(it.title)}</b><br><small style="color:var(--sub)">링크로 열기</small></div></a>`;
@@ -739,7 +741,7 @@ function renderForm(){
   const f = form, fd = f.folder, it = f.id ? byId(f.id) : null, D = FOLD[fd];
   let h = `<h2>${it?'수정':'추가'} · ${D.icon} ${D.name}</h2>`;
   if(fd !== 'idea'){
-    h += `<div class="fld"><label class="drop" id="fDrop"><input type="file" id="fFile" accept="${D.accept}" ${it?'':'multiple'}><span>${it ? '📂 파일 교체 (선택 사항)' : '📂 파일 선택 · 여러 개 가능' + (fd==='thumb'?' · 붙여넣기 가능':'')}<br><small>${fd==='music'?'WAV 원본 그대로 저장돼요 · 파일 없이 링크만 등록해도 돼요':fd==='video'?'영상 없이 유튜브 링크만 등록해도 돼요':'원본 화질 그대로 저장돼요 · 링크만 등록해도 돼요'}</small></span></label><div id="fPend" class="plist"></div></div>
+    h += `<div class="fld"><label class="drop" id="fDrop"><input type="file" id="fFile" accept="${D.accept}" ${it?'':'multiple'}><span>${it ? '📂 파일 교체 (선택 사항)' : '📂 파일 선택 · 여러 개 가능' + (fd==='thumb'?' · 이미지·동영상 · 붙여넣기 가능':'')}<br><small>${fd==='music'?'WAV 원본 그대로 저장돼요 · 파일 없이 링크만 등록해도 돼요':fd==='video'?'영상 없이 유튜브 링크만 등록해도 돼요':'이미지·동영상 원본 그대로 저장돼요 · 링크만 등록해도 돼요'}</small></span></label><div id="fPend" class="plist"></div></div>
       <div class="fld"><label>제목</label><input id="fTitle" value="${esc(it?it.title:'')}" placeholder="${it?'':'비우면 파일 이름 사용 (여러 개면 각 파일 이름)'}"></div>
       <div class="fld"><label>플레이리스트 연결 (여러 개 선택 가능)</label><input type="hidden" id="fPl" value="${esc(f.pls.join(','))}"><div id="fPlBox" class="plbox"></div></div>
       <div class="fld"><label>🔗 링크 (URL)</label><input id="fYt" type="url" inputmode="url" value="${esc(it?it.ytUrl||'':'')}" placeholder="${{thumb:'참고 이미지·캔바·드라이브 주소', music:'Suno·유튜브·구글드라이브 등 음원 주소', video:'https://youtu.be/...'}[fd]}"></div>`;
@@ -788,7 +790,7 @@ function addPend(fs){
   if(!form) return;
   const fd = form.folder, it = form.id ? byId(form.id) : null;
   const ok = fs.filter(f => { const t = f.type || guessType(f.name);
-    return fd==='thumb'||fd==='idea' ? /^image\//.test(t) : fd==='music' ? /^audio\//.test(t) : /^video\//.test(t); });
+    return fd==='thumb' ? /^(image|video)\//.test(t) : fd==='idea' ? /^image\//.test(t) : fd==='music' ? /^audio\//.test(t) : /^video\//.test(t); });
   if(ok.length < fs.length) toast(`${fs.length-ok.length}개 파일은 형식이 맞지 않아 제외했어요`);
   if(fd !== 'idea' && it) form.pend = ok.slice(0,1); else form.pend.push(...ok);
   renderPend();
@@ -1050,7 +1052,7 @@ const ACT = {
   edit: d => { const it = byId(d.id); openForm(it.folder, it.id); },
   del: d => delItem(d.id),
   dl: d => { const it = byId(d.id); if(it && it.files[0]) download(it.files[0]); },
-  view: d => { const it = byId(d.id); if(it.folder === 'idea') openViewer(it.files, +d.i || 0); else { let L = visible().filter(x => x.files[0]); if(!L.includes(it)) L = [it]; const k = L.indexOf(it); openViewer(L.map(x => x.files[0]), Math.max(0, k)); } },
+  view: d => { const it = byId(d.id); if(it.folder === 'idea') openViewer(it.files, +d.i || 0); else { let L = visible().filter(x => x.files[0] && isImg(x.files[0])); if(!L.includes(it)) L = [it]; const k = L.indexOf(it); openViewer(L.map(x => x.files[0]), Math.max(0, k)); } },
   vdl: () => download(vw.list[vw.i]), vprev: () => vstep(-1), vnext: () => vstep(1),
   status: d => { const it = byId(d.id); upsert({ ...it, status: d.v }); render(); },
   mv: d => moveTrack(d.pl, d.id, +d.d),
